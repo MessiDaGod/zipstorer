@@ -15,7 +15,7 @@ namespace Test
         {
             var test = new UnitTestFolder();
             UnitTestFolder.Initialize(null);
-            test.Folder_Test();
+            test.YardiFolderDownload();
         }
     }
 }
