@@ -1,12 +1,11 @@
 // ZipStorer, by Jaime Olivares
 // Website: http://github.com/jaime-olivares/zipstorer
 
-using System;
 using System.Collections.Generic;
 using System.Text;
 
 #if !NOASYNC
-    using System.Threading.Tasks;
+using System.Threading.Tasks;
 #endif
 
 namespace System.IO.Compression
@@ -19,12 +18,12 @@ namespace System.IO.Compression
         /// <summary>
         /// Compression method enumeration
         /// </summary>
-        public enum Compression : ushort 
-        { 
-            /// <summary>Uncompressed storage</summary> 
-            Store = 0, 
+        public enum Compression : ushort
+        {
+            /// <summary>Uncompressed storage</summary>
+            Store = 0,
             /// <summary>Deflate compression method</summary>
-            Deflate = 8 
+            Deflate = 8
         }
 
         /// <summary>
@@ -33,7 +32,7 @@ namespace System.IO.Compression
         public class ZipFileEntry
         {
             /// <summary>Compression method</summary>
-            public Compression Method; 
+            public Compression Method;
             /// <summary>Full path and filename as stored in Zip</summary>
             public string FilenameInZip;
             /// <summary>Original file size</summary>
@@ -58,6 +57,14 @@ namespace System.IO.Compression
             public string Comment;
             /// <summary>True if UTF8 encoding for filename and comments, false if default (CP 437)</summary>
             public bool EncodeUTF8;
+            /// <summary>
+            /// File name without extension
+            /// </summary>
+            public string FileName;
+            /// <summary>
+            /// Example: .docx
+            /// </summary>
+            public string Extension;
 
             /// <summary>Overriden method</summary>
             /// <returns>Filename in Zip</returns>
@@ -67,14 +74,14 @@ namespace System.IO.Compression
             }
         }
 
-#region Public fields
+        #region Public fields
         /// <summary>True if UTF8 encoding for filename and comments, false if default (CP 437)</summary>
         public bool EncodeUTF8 = false;
         /// <summary>Force deflate algotithm even if it inflates the stored file. Off by default.</summary>
         public bool ForceDeflating = false;
-#endregion
+        #endregion Public fields
 
-#region Private fields
+        #region Private fields
         // List of files to store
         private List<ZipFileEntry> Files = new List<ZipFileEntry>();
         // Filename of storage file
@@ -97,9 +104,9 @@ namespace System.IO.Compression
         private static UInt32[] CrcTable = null;
         // Default filename encoder
         private static Encoding DefaultEncoding = Encoding.GetEncoding(437);
-#endregion
+        #endregion Private fields
 
-#region Public methods
+        #region Public methods
         // Static constructor. Just invoked once in order to create the CRC32 lookup table.
         static ZipStorer()
         {
@@ -127,6 +134,7 @@ namespace System.IO.Compression
         /// <returns>A valid ZipStorer object</returns>
         public static ZipStorer Create(string _filename, string _comment = null)
         {
+            
             Stream stream = new FileStream(_filename, FileMode.Create, FileAccess.ReadWrite);
 
             ZipStorer zip = Create(stream, _comment);
@@ -193,10 +201,10 @@ namespace System.IO.Compression
 
             if (zip.ReadFileInfo())
                 return zip;
-            
+
             if (!_leaveOpen)
                 zip.Close();
-            
+
             throw new System.IO.InvalidDataException();
         }
 
@@ -206,8 +214,26 @@ namespace System.IO.Compression
         /// <param name="_method">Compression method</param>
         /// <param name="_pathname">Full path of file to add to Zip storage</param>
         /// <param name="_filenameInZip">Filename and path as desired in Zip directory</param>
-        /// <param name="_comment">Comment for stored file</param>        
+        /// <param name="_comment">Comment for stored file</param>
         public ZipFileEntry AddFile(Compression _method, string _pathname, string _filenameInZip, string _comment = null)
+        {
+            if (Access == FileAccess.Read)
+                throw new InvalidOperationException("Writing is not alowed");
+
+            using (var stream = new FileStream(_pathname, FileMode.Open, FileAccess.Read))
+            {
+                return this.AddStream(_method, _filenameInZip, stream, File.GetLastWriteTime(_pathname), _comment);
+            }
+        }
+
+        /// <summary>
+        /// Add specific files into the Zip storage
+        /// </summary>
+        /// <param name="_method">Compression method</param>
+        /// <param name="_pathname">Full path of file to add to Zip storage</param>
+        /// <param name="_filenameInZip">Filename and path as desired in Zip directory</param>
+        /// <param name="_comment">Comment for stored file</param>
+        public ZipFileEntry AddFileSpecific(Compression _method, string _pathname, string _filenameInZip, string _filename, string _comment = null)
         {
             if (Access == FileAccess.Read)
                 throw new InvalidOperationException("Writing is not alowed");
@@ -226,7 +252,7 @@ namespace System.IO.Compression
         {
 #if NOASYNC
             return this.AddStreamAsync(_method, _filenameInZip, _source, _modTime, _comment);
-#else            
+#else
             return Task.Run(() => this.AddStreamAsync(_method, _filenameInZip, _source, _modTime, _comment)).Result;
 #endif
         }
@@ -241,8 +267,8 @@ namespace System.IO.Compression
         /// <param name="_comment">Comment for stored file</param>
 #if NOASYNC
         private ZipFileEntry
-#else                
-        public async Task<ZipFileEntry> 
+#else
+        public async Task<ZipFileEntry>
 #endif
         AddStreamAsync(Compression _method, string _filenameInZip, Stream _source, DateTime _modTime, string _comment = null)
         {
@@ -268,11 +294,11 @@ namespace System.IO.Compression
             zfe.FileOffset = (uint)this.ZipFileStream.Position;
 
             // Write file to zip (store)
-            #if NOASYNC
+#if NOASYNC
                 Store(zfe, _source);
-            #else
-                await Store(zfe, _source);
-            #endif
+#else
+            await Store(zfe, _source);
+#endif
 
             _source.Close();
             this.UpdateCrcAndSizes(zfe);
@@ -359,7 +385,7 @@ namespace System.IO.Compression
         }
 
         /// <summary>
-        /// Read all the file records in the central directory 
+        /// Read all the file records in the central directory
         /// </summary>
         /// <returns>List of all entries in directory</returns>
         public List<ZipFileEntry> ReadCentralDir()
@@ -369,7 +395,7 @@ namespace System.IO.Compression
 
             List<ZipFileEntry> result = new List<ZipFileEntry>();
 
-            for (int pointer = 0; pointer < this.CentralDirImage.Length; )
+            for (int pointer = 0; pointer < this.CentralDirImage.Length;)
             {
                 uint signature = BitConverter.ToUInt32(CentralDirImage, pointer);
                 if (signature != 0x02014b50)
@@ -385,7 +411,7 @@ namespace System.IO.Compression
                 ushort extraSize = BitConverter.ToUInt16(CentralDirImage, pointer + 30);
                 ushort commentSize = BitConverter.ToUInt16(CentralDirImage, pointer + 32);
                 uint headerOffset = BitConverter.ToUInt32(CentralDirImage, pointer + 42);
-                uint headerSize = (uint)( 46 + filenameSize + extraSize + commentSize);
+                uint headerSize = (uint)(46 + filenameSize + extraSize + commentSize);
                 DateTime modifyTimeDT = DosTimeToDateTime(modifyTime) ?? DateTime.Now;
 
                 Encoding encoder = encodeUTF8 ? Encoding.UTF8 : DefaultEncoding;
@@ -440,18 +466,18 @@ namespace System.IO.Compression
                 return true;
 
             bool result;
-            using(var output = new FileStream(_filename, FileMode.Create, FileAccess.Write))
+            using (var output = new FileStream(_filename, FileMode.Create, FileAccess.Write))
             {
                 result = this.ExtractFile(_zfe, output);
             }
-                
+
             if (result)
             {
                 File.SetCreationTime(_filename, _zfe.CreationTime);
                 File.SetLastWriteTime(_filename, _zfe.ModifyTime);
                 File.SetLastAccessTime(_filename, _zfe.AccessTime);
             }
-            
+
             return result;
         }
 
@@ -463,7 +489,7 @@ namespace System.IO.Compression
         {
 #if NOASYNC
             return this.ExtractFileAsync(_zfe, _stream);
-#else                
+#else
             return Task.Run(() => ExtractFileAsync(_zfe, _stream)).Result;
 #endif
         }
@@ -477,8 +503,8 @@ namespace System.IO.Compression
         /// <remarks>Unique compression methods are Store and Deflate</remarks>
 #if NOASYNC
         private bool
-#else                
-        public async Task<bool> 
+#else
+        public async Task<bool>
 #endif
         ExtractFileAsync(ZipFileEntry _zfe, Stream _stream)
         {
@@ -488,12 +514,12 @@ namespace System.IO.Compression
             // check signature
             byte[] signature = new byte[4];
             this.ZipFileStream.Seek(_zfe.HeaderOffset, SeekOrigin.Begin);
-            
-            #if NOASYNC
+
+#if NOASYNC
                 this.ZipFileStream.Read(signature, 0, 4);
-            #else
-                await this.ZipFileStream.ReadAsync(signature, 0, 4);
-            #endif
+#else
+            await this.ZipFileStream.ReadAsync(signature, 0, 4);
+#endif
 
             if (BitConverter.ToUInt32(signature, 0) != 0x04034b50)
                 return false;
@@ -515,14 +541,14 @@ namespace System.IO.Compression
 
             while (bytesPending > 0)
             {
-                #if NOASYNC
+#if NOASYNC
                     int bytesRead = inStream.Read(buffer, 0, (int)Math.Min(bytesPending, buffer.Length));
                     _stream.Write(buffer, 0, bytesRead);
-                #else
-                    int bytesRead = await inStream.ReadAsync(buffer, 0, (int)Math.Min(bytesPending, buffer.Length));
-                    await _stream.WriteAsync(buffer, 0, bytesRead);
-                #endif
-                                        
+#else
+                int bytesRead = await inStream.ReadAsync(buffer, 0, (int)Math.Min(bytesPending, buffer.Length));
+                await _stream.WriteAsync(buffer, 0, bytesRead);
+#endif
+
                 bytesPending -= (uint)bytesRead;
             }
             _stream.Flush();
@@ -612,9 +638,9 @@ namespace System.IO.Compression
             }
             return true;
         }
-#endregion
+        #endregion Public methods
 
-#region Private methods
+        #region Private methods
         // Calculate the file offset by reading the corresponding local header
         private uint GetFileOffset(uint _headerOffset)
         {
@@ -652,8 +678,8 @@ namespace System.IO.Compression
             byte[] encodedFilename = encoder.GetBytes(_zfe.FilenameInZip);
             byte[] extraInfo = this.CreateExtraInfo(_zfe);
 
-            this.ZipFileStream.Write(new byte[] { 80, 75, 3, 4, 20, 0}, 0, 6); // No extra header
-            this.ZipFileStream.Write(BitConverter.GetBytes((ushort)(_zfe.EncodeUTF8 ? 0x0800 : 0)), 0, 2); // filename and comment encoding 
+            this.ZipFileStream.Write(new byte[] { 80, 75, 3, 4, 20, 0 }, 0, 6); // No extra header
+            this.ZipFileStream.Write(BitConverter.GetBytes((ushort)(_zfe.EncodeUTF8 ? 0x0800 : 0)), 0, 2); // filename and comment encoding
             this.ZipFileStream.Write(BitConverter.GetBytes((ushort)_zfe.Method), 0, 2);  // zipping method
             this.ZipFileStream.Write(BitConverter.GetBytes(DateTimeToDosTime(_zfe.ModifyTime)), 0, 4); // zipping date and time
             this.ZipFileStream.Write(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 0, 12); // unused CRC, un/compressed size, updated later
@@ -696,7 +722,7 @@ namespace System.IO.Compression
             byte[] extraInfo = this.CreateExtraInfo(_zfe);
 
             this.ZipFileStream.Write(new byte[] { 80, 75, 1, 2, 23, 0xB, 20, 0 }, 0, 8);
-            this.ZipFileStream.Write(BitConverter.GetBytes((ushort)(_zfe.EncodeUTF8 ? 0x0800 : 0)), 0, 2); // filename and comment encoding 
+            this.ZipFileStream.Write(BitConverter.GetBytes((ushort)(_zfe.EncodeUTF8 ? 0x0800 : 0)), 0, 2); // filename and comment encoding
             this.ZipFileStream.Write(BitConverter.GetBytes((ushort)_zfe.Method), 0, 2);  // zipping method
             this.ZipFileStream.Write(BitConverter.GetBytes(DateTimeToDosTime(_zfe.ModifyTime)), 0, 4);  // zipping date and time
             this.ZipFileStream.Write(BitConverter.GetBytes(_zfe.Crc32), 0, 4); // file CRC
@@ -722,16 +748,16 @@ namespace System.IO.Compression
             return size >= 0xFFFFFFFF ? 0xFFFFFFFF : (uint)size;
         }
 
-        /* 
+        /*
         Zip64 end of central directory record
-            zip64 end of central dir 
+            zip64 end of central dir
             signature                       4 bytes  (0x06064b50)
             size of zip64 end of central
             directory record                8 bytes
             version made by                 2 bytes
             version needed to extract       2 bytes
             number of this disk             4 bytes
-            number of the disk with the 
+            number of the disk with the
             start of the central directory  4 bytes
             total number of entries in the
             central directory on this disk  8 bytes
@@ -741,14 +767,14 @@ namespace System.IO.Compression
             offset of start of central
             directory with respect to
             the starting disk number        8 bytes
-            zip64 extensible data sector    (variable size)        
-        
+            zip64 extensible data sector    (variable size)
+
         Zip64 end of central directory locator
 
-            zip64 end of central dir locator 
+            zip64 end of central dir locator
             signature                       4 bytes  (0x07064b50)
             number of the disk with the
-            start of the zip64 end of 
+            start of the zip64 end of
             central directory               4 bytes
             relative offset of the zip64
             end of central directory record 8 bytes
@@ -779,19 +805,19 @@ namespace System.IO.Compression
             this.ZipFileStream.Write(new byte[] { 80, 75, 6, 6 }, 0, 4);
             this.ZipFileStream.Write(BitConverter.GetBytes((Int64)44), 0, 8); // size of zip64 end of central directory
             this.ZipFileStream.Write(BitConverter.GetBytes((UInt16)45), 0, 2); // version made by
-            this.ZipFileStream.Write(BitConverter.GetBytes((UInt16)45), 0, 2); // version needed to extract 
+            this.ZipFileStream.Write(BitConverter.GetBytes((UInt16)45), 0, 2); // version needed to extract
             this.ZipFileStream.Write(BitConverter.GetBytes((UInt32)0), 0, 4); // current disk
-            this.ZipFileStream.Write(BitConverter.GetBytes((UInt32)0), 0, 4); // start of central directory 
-            this.ZipFileStream.Write(BitConverter.GetBytes((Int64)Files.Count+ExistingFiles), 0, 8); // total number of entries in the central directory in disk
-            this.ZipFileStream.Write(BitConverter.GetBytes((Int64)Files.Count+ExistingFiles), 0, 8); // total number of entries in the central directory
+            this.ZipFileStream.Write(BitConverter.GetBytes((UInt32)0), 0, 4); // start of central directory
+            this.ZipFileStream.Write(BitConverter.GetBytes((Int64)Files.Count + ExistingFiles), 0, 8); // total number of entries in the central directory in disk
+            this.ZipFileStream.Write(BitConverter.GetBytes((Int64)Files.Count + ExistingFiles), 0, 8); // total number of entries in the central directory
             this.ZipFileStream.Write(BitConverter.GetBytes(_size), 0, 8); // size of the central directory
             this.ZipFileStream.Write(BitConverter.GetBytes(_offset), 0, 8); // offset of start of central directory with respect to the starting disk number
 
             // Zip64 end of central directory locator
             this.ZipFileStream.Write(new byte[] { 80, 75, 6, 7 }, 0, 4);
-            this.ZipFileStream.Write(BitConverter.GetBytes((UInt32)0), 0, 4); // number of the disk 
+            this.ZipFileStream.Write(BitConverter.GetBytes((UInt32)0), 0, 4); // number of the disk
             this.ZipFileStream.Write(BitConverter.GetBytes(dirOffset), 0, 8); // relative offset of the zip64 end of central directory record
-            this.ZipFileStream.Write(BitConverter.GetBytes((UInt32)1), 0, 4); // total number of disks 
+            this.ZipFileStream.Write(BitConverter.GetBytes((UInt32)1), 0, 4); // total number of disks
 
             Encoding encoder = this.EncodeUTF8 ? Encoding.UTF8 : DefaultEncoding;
             byte[] encodedComment = encoder.GetBytes(this.Comment);
@@ -805,8 +831,8 @@ namespace System.IO.Compression
         // Copies all the source file into the zip storage
 #if NOASYNC
         private Compression
-#else                
-        private async Task<Compression> 
+#else
+        private async Task<Compression>
 #endif
         Store(ZipFileEntry _zfe, Stream _source)
         {
@@ -824,7 +850,7 @@ namespace System.IO.Compression
                 outStream = new DeflateStream(this.ZipFileStream, CompressionMode.Compress, true);
 
             _zfe.Crc32 = 0 ^ 0xffffffff;
-            
+
             do
             {
 #if NOASYNC
@@ -835,7 +861,7 @@ namespace System.IO.Compression
                 bytesRead = await _source.ReadAsync(buffer, 0, buffer.Length);
                 if (bytesRead > 0)
                     await outStream.WriteAsync(buffer, 0, bytesRead);
-#endif 
+#endif
 
                 for (uint i = 0; i < bytesRead; i++)
                 {
@@ -863,31 +889,31 @@ namespace System.IO.Compression
                 this.ZipFileStream.SetLength(posStart);
                 _source.Position = sourceStart;
 
-                #if NOASYNC                
+#if NOASYNC
                     return this.Store(_zfe, _source);
-                #else
-                    return await this.Store(_zfe, _source);
-                #endif
+#else
+                return await this.Store(_zfe, _source);
+#endif
             }
 
             return _zfe.Method;
         }
 
         /* DOS Date and time:
-            MS-DOS date. The date is a packed value with the following format. Bits Description 
-                0-4 Day of the month (131) 
-                5-8 Month (1 = January, 2 = February, and so on) 
-                9-15 Year offset from 1980 (add 1980 to get actual year) 
-            MS-DOS time. The time is a packed value with the following format. Bits Description 
-                0-4 Second divided by 2 
-                5-10 Minute (059) 
-                11-15 Hour (023 on a 24-hour clock) 
+            MS-DOS date. The date is a packed value with the following format. Bits Description
+                0-4 Day of the month (131)
+                5-8 Month (1 = January, 2 = February, and so on)
+                9-15 Year offset from 1980 (add 1980 to get actual year)
+            MS-DOS time. The time is a packed value with the following format. Bits Description
+                0-4 Second divided by 2
+                5-10 Minute (059)
+                11-15 Hour (023 on a 24-hour clock)
         */
         private uint DateTimeToDosTime(DateTime _dt)
         {
             return (uint)(
-                (_dt.Second / 2) | (_dt.Minute << 5) | (_dt.Hour << 11) | 
-                (_dt.Day<<16) | (_dt.Month << 21) | ((_dt.Year - 1980) << 25));
+                (_dt.Second / 2) | (_dt.Minute << 5) | (_dt.Hour << 11) |
+                (_dt.Day << 16) | (_dt.Month << 21) | ((_dt.Year - 1980) << 25));
         }
 
         private DateTime? DosTimeToDateTime(uint _dt)
@@ -907,7 +933,7 @@ namespace System.IO.Compression
 
         private byte[] CreateExtraInfo(ZipFileEntry _zfe)
         {
-            byte[] buffer = new byte[36+36];
+            byte[] buffer = new byte[36 + 36];
             BitConverter.GetBytes((ushort)0x0001).CopyTo(buffer, 0); // ZIP64 Information
             BitConverter.GetBytes((ushort)32).CopyTo(buffer, 2); // Length
             BitConverter.GetBytes((ushort)1).CopyTo(buffer, 8); // Tag 1
@@ -938,7 +964,7 @@ namespace System.IO.Compression
             while (pos < buffer.Length - 4)
             {
                 uint extraId = BitConverter.ToUInt16(buffer, pos);
-                uint length = BitConverter.ToUInt16(buffer, pos+2);
+                uint length = BitConverter.ToUInt16(buffer, pos + 2);
 
                 if (extraId == 0x0001) // ZIP64 Information
                 {
@@ -948,11 +974,11 @@ namespace System.IO.Compression
                     if (tag == 1 && size >= 24)
                     {
                         if (_zfe.FileSize == 0xFFFFFFFF)
-                            _zfe.FileSize = BitConverter.ToInt64(buffer, pos+12);
+                            _zfe.FileSize = BitConverter.ToInt64(buffer, pos + 12);
                         if (_zfe.CompressedSize == 0xFFFFFFFF)
-                            _zfe.CompressedSize = BitConverter.ToInt64(buffer, pos+20);
+                            _zfe.CompressedSize = BitConverter.ToInt64(buffer, pos + 20);
                         if (_zfe.HeaderOffset == 0xFFFFFFFF)
-                            _zfe.HeaderOffset = BitConverter.ToInt64(buffer, pos+28);
+                            _zfe.HeaderOffset = BitConverter.ToInt64(buffer, pos + 28);
                     }
                 }
 
@@ -963,18 +989,18 @@ namespace System.IO.Compression
 
                     if (tag == 1 && size == 24)
                     {
-                        _zfe.ModifyTime = DateTime.FromFileTime(BitConverter.ToInt64(buffer, pos+12));
-                        _zfe.AccessTime = DateTime.FromFileTime(BitConverter.ToInt64(buffer, pos+20));
-                        _zfe.CreationTime = DateTime.FromFileTime(BitConverter.ToInt64(buffer, pos+28));
+                        _zfe.ModifyTime = DateTime.FromFileTime(BitConverter.ToInt64(buffer, pos + 12));
+                        _zfe.AccessTime = DateTime.FromFileTime(BitConverter.ToInt64(buffer, pos + 20));
+                        _zfe.CreationTime = DateTime.FromFileTime(BitConverter.ToInt64(buffer, pos + 28));
                     }
                 }
 
                 pos += (int)length + 4;
-            }        
+            }
         }
 
         /* CRC32 algorithm
-          The 'magic number' for the CRC is 0xdebb20e3.  
+          The 'magic number' for the CRC is 0xdebb20e3.
           The proper CRC pre and post conditioning is used, meaning that the CRC register is
           pre-conditioned with all ones (a starting value of 0xffffffff) and the value is post-conditioned by
           taking the one's complement of the CRC residual.
@@ -1037,7 +1063,7 @@ namespace System.IO.Compression
                         var commentPosition = ZipFileStream.Position;
 
                         if (centralDirOffset == 0xffffffff) // It is a Zip64 file
-                        {                            
+                        {
                             this.ZipFileStream.Position = dirPosition - 20;
 
                             sig = br.ReadUInt32();
@@ -1081,17 +1107,17 @@ namespace System.IO.Compression
 
             return false;
         }
-#endregion
+        #endregion Private methods
 
-#region IDisposable implementation
+        #region IDisposable implementation
         /// <summary>
         /// Closes the Zip file stream
         /// </summary>
-        public void Dispose() 
+        public void Dispose()
         {
             Dispose(true);
 
-            GC.SuppressFinalize(this);      
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void Dispose(bool disposing)
@@ -1100,10 +1126,10 @@ namespace System.IO.Compression
             {
                 if (disposing)
                     this.Close();
- 
-                isDisposed = true;   
+
+                isDisposed = true;
             }
-        }        
-#endregion
+        }
+        #endregion IDisposable implementation
     }
 }
